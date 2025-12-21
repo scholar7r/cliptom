@@ -13,8 +13,8 @@
         "windows": [
             {
                 "title": "cliptom",
-                "width": 300,
-                "height": 400
+                "width": 350,
+                "height": 450
             }
         ],
         "security": {
