@@ -144,6 +144,7 @@
 
                             await writeText(result);
                             pushNotify(`自动转换成功: ${result}`);
+                            lastClipboardContent = result;
                         }
                     }
                 }
