@@ -1,17 +1,16 @@
 <script lang="ts">
-    import {
-        BrushCleaningIcon,
-        ClipboardPenIcon,
-        PinIcon,
-    } from "lucide-svelte";
+    import { BrushCleaningIcon, ClipboardPenIcon } from "lucide-svelte";
     import { SegmentedControl } from "@skeletonlabs/skeleton-svelte";
     import Notify from "../components/notify.svelte";
     import KittyUrl from "../components/kitty.svg?url";
-    import { invoke } from "@tauri-apps/api/core";
-    import { getCurrentWindow } from "@tauri-apps/api/window";
     import "../global.css";
-    import { writeText, readText } from "@tauri-apps/plugin-clipboard-manager";
-    import { onDestroy } from "svelte";
+    import { ClipboardManager } from "../services/ClipboardManager";
+    import { ContactValidator } from "../services/ContactValidator";
+    import {
+        ConverterManager,
+        type ConverterConfig,
+    } from "../services/ConverterManager";
+    import { NotificationManager } from "../services/NotificationManager";
 
     const LISTEN_MODE = {
         NO_BILL_PACKAGE: "NO_BILL_PACKAGE",
@@ -20,7 +19,7 @@
 
     const separators = ["_", "转"];
 
-    const converters = [
+    const converters: ConverterConfig[] = [
         {
             label: "不要包装 & 小票",
             prefix: " 不 要 包 装 ",
@@ -35,158 +34,82 @@
     ];
 
     let contact = "";
-    let notifies: { message: string; createdAt: Date }[] = [];
-    let isListen: boolean = false;
     let currentListenType = LISTEN_MODE.NO_BILL;
-    let pollingInterval: number | null = null;
-    let lastClipboardContent: string = "";
-    let isAlwaysOnTop: boolean = false;
+    let notifies: { message: string; createdAt: Date }[] = [];
+
+    const clipboardManager = new ClipboardManager();
+    const contactValidator = new ContactValidator(separators);
+    const converterManager = new ConverterManager(separators, converters);
+    const notificationManager = new NotificationManager();
+
+    notificationManager.subscribe((notifications) => {
+        notifies = notifications;
+    });
 
     function handleReset() {
         contact = "";
-        notifies = [];
-        if (isListen) {
-            stopPolling();
-            isListen = false;
-            pushNotify("已停止监听");
+        notificationManager.clear();
+        if (clipboardManager.isActive()) {
+            clipboardManager.stopPolling();
+            notificationManager.add("已停止监听");
         }
     }
 
     async function handleConvert(convert: { prefix: string; suffix: string }) {
         try {
-            const result: string = await invoke("handle_convert", {
-                value: contact,
-                separators: separators,
+            const result = await converterManager.convert(contact, {
+                label: "",
                 prefix: convert.prefix,
                 suffix: convert.suffix,
+                listenType: "",
             });
-
-            await writeText(result);
-
-            pushNotify(result);
+            await clipboardManager.writeContent(result);
+            notificationManager.add(result);
         } catch (error: any) {
-            pushNotify(error?.toString());
+            notificationManager.add(error?.toString());
         }
-    }
-
-    function pushNotify(message: string) {
-        notifies = [
-            {
-                message: message,
-                createdAt: new Date(),
-            },
-            ...notifies,
-        ];
-    }
-
-    function validateContact(contact: string, separators: string[]): boolean {
-        const trimmed = contact.trim();
-
-        for (const separator of separators) {
-            const separatorIndex = trimmed.indexOf(separator);
-            if (separatorIndex === 11 && trimmed.length === 16) {
-                let digitsValid = true;
-
-                for (let i = 0; i < 11; i++) {
-                    if (trimmed[i] < "0" || trimmed[i] > "9") {
-                        digitsValid = false;
-                        break;
-                    }
-                }
-
-                for (let i = 12; i < 16; i++) {
-                    if (trimmed[i] < "0" || trimmed[i] > "9") {
-                        digitsValid = false;
-                        break;
-                    }
-                }
-
-                if (digitsValid) return true;
-            }
-        }
-
-        return false;
     }
 
     async function startPolling() {
-        try {
-            lastClipboardContent = (await readText()) || "";
-        } catch (error) {
-            pushNotify(`初始化剪切板失败: ${error}`);
+        const initialized = await clipboardManager.initialize();
+        if (!initialized) {
+            notificationManager.add("初始化剪切板失败");
             return false;
         }
 
-        pollingInterval = setInterval(async () => {
-            try {
-                const currentContent = (await readText()) || "";
-
-                if (
-                    currentContent !== lastClipboardContent &&
-                    currentContent &&
-                    currentContent.trim() !== ""
-                ) {
-                    lastClipboardContent = currentContent;
-
-                    if (validateContact(currentContent, separators)) {
-                        const converter = converters.find(
-                            (c) => c.listenType === currentListenType,
+        clipboardManager.startPolling(async (content) => {
+            if (contactValidator.validate(content)) {
+                const converter =
+                    converterManager.getConverterByType(currentListenType);
+                if (converter) {
+                    try {
+                        const result = await converterManager.convert(
+                            content,
+                            converter,
                         );
-                        if (converter) {
-                            const result: string = await invoke(
-                                "handle_convert",
-                                {
-                                    value: currentContent,
-                                    separators: separators,
-                                    prefix: converter.prefix || "",
-                                    suffix: converter.suffix || "",
-                                },
-                            );
-
-                            await writeText(result);
-                            pushNotify(`自动转换成功: ${result}`);
-                            lastClipboardContent = result;
-                        }
+                        await clipboardManager.writeContent(result);
+                        notificationManager.add(`自动转换成功: ${result}`);
+                    } catch (error: any) {
+                        notificationManager.add(
+                            `转换失败: ${error?.toString()}`,
+                        );
                     }
                 }
-            } catch (error: any) {
-                console.error("剪切板轮询错误:", error);
             }
-        }, 500);
+        });
 
         return true;
     }
-
-    function stopPolling() {
-        if (pollingInterval) {
-            clearInterval(pollingInterval);
-            pollingInterval = null;
-        }
-    }
-
-    async function toggleAlwaysOnTop() {
-        try {
-            const window = getCurrentWindow();
-            isAlwaysOnTop = !isAlwaysOnTop;
-            await window.setAlwaysOnTop(isAlwaysOnTop);
-            pushNotify(isAlwaysOnTop ? "已开启置顶" : "已关闭置顶");
-        } catch (error: any) {
-            pushNotify(`设置置顶失败: ${error}`);
-        }
-    }
-
-    onDestroy(() => {
-        stopPolling();
-    });
 </script>
 
 <main class="grid grid-rows-[auto_1fr_auto] h-screen">
     <header class="px-4 py-2 pt-4 flex flex-col gap-2">
-        {#if isListen}
+        {#if clipboardManager.isActive()}
             <SegmentedControl
                 defaultValue={currentListenType}
                 class="flex-1"
                 onValueChange={(detail) => {
-                    pushNotify(`更换监听模式为: ${detail.value}`);
+                    notificationManager.add(`更换监听模式为: ${detail.value}`);
                     currentListenType = detail.value || "";
                 }}
             >
@@ -278,30 +201,18 @@
 
     <button
         type="button"
-        class="fixed bottom-16 right-6 btn-icon preset-filled"
-        class:bg-surface-400={isAlwaysOnTop}
-        title="置顶"
-        onclick={toggleAlwaysOnTop}
-    >
-        <PinIcon />
-    </button>
-
-    <button
-        type="button"
         class="fixed bottom-6 right-6 btn-icon preset-filled"
-        class:bg-surface-400={isListen}
+        class:bg-surface-400={clipboardManager.isActive()}
         title="监听模式"
         onclick={async () => {
-            if (!isListen) {
+            if (!clipboardManager.isActive()) {
                 const started = await startPolling();
                 if (started) {
-                    pushNotify("开始监听...");
-                    isListen = true;
+                    notificationManager.add("开始监听...");
                 }
             } else {
-                stopPolling();
-                pushNotify("停止监听...");
-                isListen = false;
+                clipboardManager.stopPolling();
+                notificationManager.add("停止监听...");
             }
         }}
     >
