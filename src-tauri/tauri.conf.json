@@ -35,7 +35,7 @@
     },
     "plugins": {
         "updater": {
-            "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDhCOUVBOUVGMTY2QUFEQkQKUldTOXJXb1c3Nm1laTRoSTVPY3JuUlZmUUdjcDZkNkxaejNjL2w2cDZDQjBrbDIrZU96eXpQd00K",
+            "pubkey": "untrusted comment: minisign public key: 8B9EA9EF166AADBD\nRWS9rWoW76mei4hI5OcrnRVfQGcp6d6LZz3c/l6p6CB0kl2+eOzyzPwM",
             "endpoints": [
                 "https://github.com/scholar7r/cliptom/releases/download/latest.json"
             ],
