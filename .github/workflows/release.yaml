@@ -5,6 +5,8 @@ on:
     branches:
       - release
 
+  workflow_dispatch:
+
 jobs:
   publish-tauri:
     permissions:
