@@ -11,6 +11,8 @@
         type ConverterConfig,
     } from "../services/ConverterManager";
     import { NotificationManager } from "../services/NotificationManager";
+    import Updater from "../components/updater.svelte";
+    import { check } from "@tauri-apps/plugin-updater";
 
     const LISTEN_MODE = {
         NO_BILL_PACKAGE: "NO_BILL_PACKAGE",
@@ -33,9 +35,12 @@
         },
     ];
 
-    let contact = "";
-    let currentListenType = LISTEN_MODE.NO_BILL;
-    let notifies: { message: string; createdAt: Date }[] = [];
+    let contact = $state("");
+    let currentListenType = $state(LISTEN_MODE.NO_BILL);
+    let notifies: { message: string; createdAt: Date }[] = $state([]);
+    let updaterOpen = $state(false);
+    let updateMessage: { version: string; body: string; update: any } | null =
+        $state(null);
 
     const clipboardManager = new ClipboardManager();
     const contactValidator = new ContactValidator(separators);
@@ -45,6 +50,24 @@
     notificationManager.subscribe((notifications) => {
         notifies = notifications;
     });
+
+    async function checkForUpdates() {
+        try {
+            const update = await check();
+            if (update) {
+                updateMessage = {
+                    version: update.version,
+                    body: update.body || "",
+                    update: update,
+                };
+                updaterOpen = true;
+            }
+        } catch (error) {
+            console.error("Failed to check update:", error);
+        }
+    }
+
+    checkForUpdates();
 
     function handleReset() {
         contact = "";
@@ -198,6 +221,16 @@
             {/if}
         </div>
     </div>
+
+    {#if updateMessage}
+        <Updater
+            version={updateMessage.version}
+            body={updateMessage.body}
+            open={updaterOpen}
+            onOpenChange={(open) => (updaterOpen = open)}
+            update={updateMessage.update}
+        />
+    {/if}
 
     <button
         type="button"

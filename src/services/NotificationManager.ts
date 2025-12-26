@@ -8,7 +8,6 @@ export interface Notification {
 export class NotificationManager {
     private notifications = writable<Notification[]>([]);
 
-    // Subscribe to changes (returns unsubscribe function)
     subscribe(callback: (value: Notification[]) => void) {
         return this.notifications.subscribe(callback);
     }

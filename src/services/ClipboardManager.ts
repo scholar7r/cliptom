@@ -47,7 +47,7 @@ export class ClipboardManager {
         this.intervalId = setInterval(async () => {
             try {
                 const currentContent = await this.readContent();
-
+                
                 if (
                     currentContent !== this.lastContent &&
                     currentContent &&
