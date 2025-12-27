@@ -41,6 +41,7 @@
     let updaterOpen = $state(false);
     let updateMessage: { version: string; body: string; update: any } | null =
         $state(null);
+    let isListening = $state(false);
 
     const clipboardManager = new ClipboardManager();
     const contactValidator = new ContactValidator(separators);
@@ -72,8 +73,9 @@
     function handleReset() {
         contact = "";
         notificationManager.clear();
-        if (clipboardManager.isActive()) {
+        if (isListening) {
             clipboardManager.stopPolling();
+            isListening = false;
             notificationManager.add("已停止监听");
         }
     }
@@ -121,15 +123,16 @@
             }
         });
 
+        isListening = true;
         return true;
     }
 </script>
 
 <main class="grid grid-rows-[auto_1fr_auto] h-screen">
     <header class="px-4 py-2 pt-4 flex flex-col gap-2">
-        {#if clipboardManager.isActive()}
+        {#if isListening}
             <SegmentedControl
-                defaultValue={currentListenType}
+                value={currentListenType}
                 class="flex-1"
                 onValueChange={(detail) => {
                     notificationManager.add(`更换监听模式为: ${detail.value}`);
@@ -235,16 +238,17 @@
     <button
         type="button"
         class="fixed bottom-6 right-6 btn-icon preset-filled"
-        class:bg-surface-400={clipboardManager.isActive()}
+        class:bg-surface-400={isListening}
         title="监听模式"
         onclick={async () => {
-            if (!clipboardManager.isActive()) {
+            if (!isListening) {
                 const started = await startPolling();
                 if (started) {
                     notificationManager.add("开始监听...");
                 }
             } else {
                 clipboardManager.stopPolling();
+                isListening = false;
                 notificationManager.add("停止监听...");
             }
         }}
